@@ -57,19 +57,5 @@ pipeline {
         }
     }
 
-    post {
-        failure {
-            stage('Cleanup on Failure') {
-                steps {
-                    script {
-                        sh """
-                        ssh ${SLAVE_USER}@${SLAVE_HOST} '
-                            docker rm -f ${DOCKER_CONTAINER} || true
-                        '
-                        """
-                    }
-                }
-            }
-        }
-    }
+    
 }
