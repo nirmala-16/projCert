@@ -1,81 +1,75 @@
 pipeline {
-    agent {
-        label 'jslave'
+    agent { label 'jslave' }
+
+    environment {
+        SLAVE_HOST = "172.31.39.215"          // Replace with your slave/test server hostname or IP
+        SLAVE_USER = "ec2-user"            // Replace with your EC2 username (ec2-user or ubuntu)
+        GIT_REPO   = "https://github.com/nirmala-16/projCert.git"
+        DOCKER_IMAGE = "my-php-webapp"
+        DOCKER_CONTAINER = "php-web"
     }
 
     stages {
-        stage('Install and configure puppet agent') {
+        stage('Job 1: Install Puppet Agent on Slave') {
             steps {
                 script {
-                    // Job 1: Install and configure puppet agent
-                    // Install Puppet Agent
-                    sh 'curl -O https://apt.puppetlabs.com/puppet6-release-bionic.deb'
-                    sh 'sudo dpkg -i puppet6-release-bionic.deb'
-                    sh 'sudo apt-get update'
-                    sh 'sudo apt-get install -y puppet-agent'
-
-                    // Configure Puppet Agent
-                    sh 'echo "server = puppetmaster.example.com" | sudo tee -a /etc/puppetlabs/puppet/puppet.conf'
-                    sh 'sudo /opt/puppetlabs/bin/puppet resource service puppet ensure=running enable=true'
+                    sh """
+                    ssh -o StrictHostKeyChecking=no ${SLAVE_USER}@${SLAVE_HOST} '
+                        sudo yum install -y puppet-agent || sudo apt-get install -y puppet-agent
+                        sudo systemctl enable puppet
+                        sudo systemctl start puppet
+                    '
+                    """
                 }
             }
         }
 
-        stage('Push Ansible configuration to install Docker') {
+        stage('Job 2: Install Docker via Ansible') {
             steps {
                 script {
-                    //Job 2: Push Ansible configuration on the test server to install Docker
-                    sh "rm -rf /tmp/ansibletemp ||:"
-                    sh "git clone https://github.com/Khaganshu-RK/Edureka-DevOps.git /tmp/ansibletemp"
-                    sh "ssh -o StrictHostKeyChecking=no ubuntu@ip-172-31-24-180 'rm -rf ~/installation.yml ||:'"
-                    sh "exit"
-                    sh "scp /tmp/ansibletemp/installation.yml ubuntu@ip-172-31-24-180:~/"
-                    sh "ssh -o StrictHostKeyChecking=no ubuntu@ip-172-31-24-180 'ansible-playbook -v ~/installation.yml'"
-                    sh "exit"
-                    sh "rm -rf /tmp/ansibletemp"
+                    // Assuming you have inventory.ini and playbook install-docker.yml in Jenkins workspace
+                    sh """
+                    ansible-playbook -i inventory.ini install-docker.yml
+                    """
                 }
             }
         }
 
-        stage('Build and deploy PHP Docker container with try catch block') {
+        stage('Job 3: Build and Deploy PHP Docker Container') {
             steps {
-                // Job 3: Pull PHP website and Dockerfile from Git repo, build, and deploy container
                 script {
-                    try {
-                        sh "rm -rf /tmp/php-web ||:"
-                        sh "git clone https://github.com/Khaganshu-RK/Edureka-DevOps.git /tmp/php-web"
-                        sh "cd /tmp/php-web"
-                        sh 'docker build -t php-website .'
-                        sh 'docker run -d -p 8010:80 php-website'
-                    } catch (Exception e) {
-                        sh 'docker rm -f $(docker ps -aq)'
-                        sh 'docker image prune -a --force'
-                        echo "Deployment failed: ${e.message}"
-                        currentBuild.result = 'FAILURE'
+                    sh """
+                    # Clone repo
+                    rm -rf php-app || true
+                    git clone ${GIT_REPO} php-app
+
+                    # Build Docker image on slave
+                    scp -r php-app ${SLAVE_USER}@${SLAVE_HOST}:/home/${SLAVE_USER}/php-app
+                    ssh ${SLAVE_USER}@${SLAVE_HOST} '
+                        cd php-app &&
+                        docker build -t ${DOCKER_IMAGE} .
+                        docker rm -f ${DOCKER_CONTAINER} || true
+                        docker run -d -p 8080:80 --name ${DOCKER_CONTAINER} ${DOCKER_IMAGE}
+                    '
+                    """
+                }
+            }
+        }
+    }
+
+    post {
+        failure {
+            stage('Cleanup on Failure') {
+                steps {
+                    script {
+                        sh """
+                        ssh ${SLAVE_USER}@${SLAVE_HOST} '
+                            docker rm -f ${DOCKER_CONTAINER} || true
+                        '
+                        """
                     }
                 }
             }
         }
-        
-//        stage('Build and deploy PHP Docker container') {
-//            steps {
-//                // Job 3: Pull PHP website and Dockerfile from Git repo, build, and deploy container
-//                sh "rm -rf /tmp/php-web ||:"
-//                sh "git clone https://github.com/Khaganshu-RK/Edureka-DevOps.git /tmp/php-web"
-//                sh "cd /tmp/php-web"
-//                sh 'docker build -t php-website .'
-//                sh 'docker run -d -p 8010:80 php-website'
-//            }
-//        }
-//
-//        stage('Cleanup on failure') {
-//            steps {
-//                // Job 4: Delete the running container on the test server if Job 3 fails
-//                catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
-//                    sh 'docker container prune --force --filter "until=3m"'
-//                    sh 'docker image prune -a --force --filter "until=5m"'
-//                }
-//            }
-//        }
-    }    
+    }
 }
