@@ -27,12 +27,18 @@ pipeline {
         }
 
         stage('Job 2: Install Docker via Ansible') {
-            steps {
-                sh '''
-                ansible-playbook -i inventory.ini install-docker.yml
-                '''
+        steps {
+        sshagent(credentials: ['ec2-user']) {
+            sh '''
+            ansible-playbook \
+              -i inventory.ini \
+              -u ec2-user \
+              install-docker.yml
+            '''
             }
         }
+    }
+
 
         stage('Job 3: Build and Deploy PHP Docker Container') {
             steps {
