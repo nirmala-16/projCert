@@ -38,27 +38,39 @@ pipeline {
             }
         }
     }
-
-
-        stage('Job 3: Build and Deploy PHP Docker Container') {
-            steps {
-                sshagent(credentials: ['ec2-user']) {
+    stage('Job 3: Build and Deploy PHP Docker Container') {
+    steps {
+        sshagent(credentials: ['ec2-user']) {
+            script {
+                try {
                     sh '''
                     rm -rf php-app || true
                     git clone ${GIT_REPO} php-app
 
-                    scp -o StrictHostKeyChecking=no -r php-app \
-                      ${SLAVE_USER}@${SLAVE_HOST}:/home/${SLAVE_USER}/php-app
+                    scp -o StrictHostKeyChecking=no -r php-app ${SLAVE_USER}@${SLAVE_HOST}:/home/${SLAVE_USER}/php-app
 
-                    ssh -o StrictHostKeyChecking=no ${SLAVE_USER}@${SLAVE_HOST} "
-                        cd /home/${SLAVE_USER}/php-app &&
-                        docker build -t ${DOCKER_IMAGE} . &&
-                        docker rm -f ${DOCKER_CONTAINER} || true &&
-                        docker run -d -p 8080:80 --name ${DOCKER_CONTAINER} ${DOCKER_IMAGE}
-                    "
+                    ssh -o StrictHostKeyChecking=no ${SLAVE_USER}@${SLAVE_HOST} << EOF
+                      cd /home/${SLAVE_USER}/php-app
+                      docker build -t ${DOCKER_IMAGE} .
+                      docker rm -f ${DOCKER_CONTAINER} || true
+                      docker run -d -p 8080:80 --name ${DOCKER_CONTAINER} ${DOCKER_IMAGE}
+                    EOF
                     '''
+                } catch (err) {
+                    echo "Job 3 failed. Cleaning up container on test server..."
+
+                    sh '''
+                    ssh -o StrictHostKeyChecking=no ${SLAVE_USER}@${SLAVE_HOST} '
+                      docker rm -f ${DOCKER_CONTAINER} || true
+                    '
+                    '''
+                    throw err   // FAIL the pipeline
                 }
             }
         }
+    }
+}
+
+      
     }
 }
