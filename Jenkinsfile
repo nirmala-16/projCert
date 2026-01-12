@@ -9,22 +9,20 @@ pipeline {
         DOCKER_CONTAINER = "php-web"
     }
 
-    stages {
-
-        stage('Job 1: Install Puppet Agent on Remote') {
-        steps {
+    stage('Job 1: Install Puppet Agent on Remote') {
+    steps {
         sshagent(credentials: ['ec2-user']) {
             sh '''
-            ssh -o StrictHostKeyChecking=no ec2-user@172.31.39.215 << 'EOF'
-              sudo dnf install -y https://yum.puppet.com/puppet8-release-el-9.noarch.rpm
-              sudo dnf install -y puppet-agent
-              sudo systemctl enable puppet
+            ssh -o StrictHostKeyChecking=no ec2-user@172.31.39.215 "
+              sudo dnf install -y https://yum.puppet.com/puppet8-release-el-9.noarch.rpm &&
+              sudo dnf install -y puppet-agent &&
+              sudo systemctl enable puppet &&
               sudo systemctl start puppet
-            EOF
+            "
             '''
-            }
         }
     }
+}
 
         stage('Job 2: Install Docker via Ansible') {
             steps {
