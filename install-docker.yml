@@ -1,6 +1,7 @@
 ---
-- hosts: "all"
+- hosts: all
   become: yes
+
   tasks:
     - name: Update all packages
       dnf:
@@ -10,19 +11,28 @@
 
     - name: Install required packages
       dnf:
-        name: "{{ packages }}"
-        state: latest
+        name:
+          - python3-pip
+          - yum-utils
+          - device-mapper-persistent-data
+          - lvm2
+          - docker
+        state: present
         update_cache: yes
-      vars:
-        packages:
-        - python-pip
-        - yum-utils
-        - device-mapper-persistent-data
-        - lvm2
-        - docker
 
-    - name: Enable Docker CE service at startup
+    - name: Enable and start Docker service
       service:
         name: docker
         state: started
         enabled: yes
+
+    - name: Add ec2-user to docker group
+      user:
+        name: ec2-user
+        groups: docker
+        append: yes
+
+    - name: Restart Docker service
+      service:
+        name: docker
+        state: restarted
